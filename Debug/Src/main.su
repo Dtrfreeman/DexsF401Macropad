@@ -1,0 +1,9 @@
+main.c:85:6:debugInit	0	static
+main.c:89:6:debugTx	0	static
+main.c:117:6:keypadReadStep	20	static
+main.c:146:6:keypadReadRoutine	8	static
+main.c:157:6:logToUsbKeys	20	static
+main.c:193:6:debugSendStr	0	static
+main.c:297:6:SystemClock_Config	112	static
+main.c:213:5:main	120	static
+main.c:554:6:Error_Handler	0	static
