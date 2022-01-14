@@ -8,13 +8,13 @@
 #ifndef KEYBOARDBINDS_H_
 #define KEYBOARDBINDS_H_
 
-#define gui 1<<7
-#define alt 1<<6
-#define shift 1<<5
-#define ctrl 1<<4
-#define lgui 1<<3
-#define lalt 1<<2
-#define lshift 1<<1
+#define gui (1<<7)
+#define alt (1<<6)
+#define shift (1<<5)
+#define ctrl (1<<4)
+#define lgui (1<<3)
+#define lalt (1<<2)
+#define lshift (1<<1)
 #define lctrl 1
 
 #define kEnter 40

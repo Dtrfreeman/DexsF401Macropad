@@ -21,7 +21,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-
+#include "keyboardBinds.h"
+#include "usbd_core.h"
+#include "usbd_hid.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 extern USBD_HandleTypeDef hUsbDeviceFS;
@@ -63,8 +65,6 @@ DMA_HandleTypeDef hdma_i2c1_tx;
 
 RTC_HandleTypeDef hrtc;
 
-SPI_HandleTypeDef hspi2;
-
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
@@ -84,7 +84,6 @@ static void MX_I2C1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_SPI2_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void debugInit(){
@@ -95,11 +94,10 @@ void debugTx(){
 
 }
 
-volatile uint16_t buttonToChar[16]={
-		62,61,75,0x100
-		,74,77,78,0x200
-		,0,82,68,0x400
-		,80,81,79,0x800};
+void getTime(RTC_TimeTypeDef * sTime){
+
+	HAL_RTC_GetTime(&hrtc,sTime,RTC_FORMAT_BIN);
+}
 
 /*	inputs are x and outputs are y
  * f5		f4		pgup	macro1
@@ -116,87 +114,141 @@ struct macroType{
 
 volatile struct macroType macroLst[4];
 
-volatile uint32_t curKeypad=0;
-volatile uint8_t keysChangedFlag=0;
-volatile uint8_t pollStage=0;
+#define keysInPad 12
 
-void keypadReadStep(){
-	uint8_t curIndex=0,curReading=0;
-	curReading=(GPIOA->ODR&0b111);
-	curReading|=(GPIOA->IDR&0b01111000);
+
+struct t_controlState{
+	uint16_t buttons:keysInPad;
+	uint8_t pollState:2;
+	uint8_t encoderState:2;
+	int8_t encoderVal;
+	int16_t stickX;
+	int16_t stickY;
+	uint8_t keysChangedFlag:4;
+	uint32_t lastModified;
+};
+#define buttonFlag 1
+#define modifiedThisCycleFlag 0b10
+#define encoderFlag 0b100
+
+void keypadReadStep(struct t_controlState * pCtrls){
+
+
+
+	uint8_t columns=(GPIOA->IDR&0b01110000)>>4;
+	uint8_t row=pCtrls->pollState * 3;
 	uint8_t maskIndex=0,mask;
-	curKeypad&= ~(0xf<<(pollStage));
-	//wipe that row (output line) to zero
-	while((curReading&0x0f)&&(maskIndex<4)){
-		mask=1<<maskIndex;
-		if(curReading&mask){//if that bit is set in the lower nibble
+	uint16_t prevButtons=pCtrls->buttons;
+	pCtrls->buttons&= ~(0b111<<row);//mask out those bits that could be set
+	pCtrls->buttons|=columns<<row;//or in the new reading
 
-			curReading&=~mask;//unset that bit so its not read again
-			curIndex=maskIndex+((curReading&0xf0)>>2);
-			keysChangedFlag++;
-			//maps mask index as x and cur reading as y
-			curKeypad|=(1<<curIndex);
+	if((pCtrls->buttons)!=prevButtons){
+		pCtrls->keysChangedFlag|=buttonFlag|modifiedThisCycleFlag;
+	}
+
+	if(pCtrls->pollState==4){
+		pCtrls->pollState=0;
+	}
+	else{pCtrls->pollState++;}
+	GPIOA->ODR=1<<(pCtrls->pollState);
+
+
+}
+#define encA 0b01
+#define encB 0b10
+volatile uint8_t encoderPeriod=0;//unused but for velocity
+//change this as the encoder cannot stay low and the velocity can be determined by how long it is low for
+
+void encoderPoll(struct t_controlState * pCtrls){
+	uint8_t prevState=pCtrls->encoderState&(encA|encB);
+	uint8_t newReading=GPIOB->IDR&(encA|encB);
+	uint8_t changed=prevState^newReading;
+	switch (prevState){
+
+		case encA:{//if a was the first to change then count the time for b to catch up, then set the new position
+			if(changed==encB){
+				pCtrls->keysChangedFlag|=encoderFlag|modifiedThisCycleFlag;
+				pCtrls->encoderVal++;
+				pCtrls->encoderState=0;
+			}
+			else{
+				encoderPeriod++;
+			}
+			break;
 		}
-		maskIndex++;
+		case encB:{
+			if(changed==encA){
+				pCtrls->keysChangedFlag|=encoderFlag|modifiedThisCycleFlag;
+				pCtrls->encoderVal--;
+				pCtrls->encoderState=0;
+			}
+			else{
+				encoderPeriod++;
+			}
+			break;
+		}
+		default:{
+			pCtrls->encoderState=changed;
+		}
 	}
-	pollStage++;
 
-	if(pollStage==3){
-		pollStage=0;
-	}
-	GPIOA->ODR=((1<<((pollStage))));
 
 }
-#define stateChangeDelay 50
 
 
-#define keysInPad 16
 
-#define controlsStateSizeBytes 2
-struct t_controlStates{
-	uint16_t buttons:12;
-	uint8_t encoderDelta:2;
-}
+//interval for running below function in 0.1ms increments
+#define stateChangeDelay 10
 
-pollAllControlsStep(){//run every 5ms
-	keypadReadStep();
+
+void pollAllControlsStep(struct t_controlState * pCtrls){//run every 5ms
+	keypadReadStep(pCtrls);
+	encoderPoll(pCtrls);
+
+	if(pCtrls->keysChangedFlag&modifiedThisCycleFlag){
+		pCtrls->lastModified=TIM2->CNT;
+	}
 	//full keypad cycle occurs every 20ms
 
 }
+
+struct t_controlState * initPoll(){
+	struct t_controlState * pCtrl = malloc(sizeof(struct t_controlState));
+	pCtrl->buttons=0;
+	pCtrl->encoderState=0;
+	pCtrl->encoderVal=0;
+	pCtrl->keysChangedFlag=0;
+	pCtrl->pollState=0;
+	pCtrl->stickX=0;
+	pCtrl->stickY=0;
+	pCtrl->lastModified=TIM2->CNT;
+	return(pCtrl);
+}
+
+//void ctrlToKeypress(){}
 
 void logToUsbKeys(uint32_t bitsOfButtons){
 	uint8_t len=0;
 	uint8_t i=0;
 	keyBoardHIDsub.MODIFIER=0;
 
-	while(i<keysInPad){
-		if(bitsOfButtons&(1<<i)){
-			len++;
-		}
-		i++;
-	}
-	uint8_t buttonIndex=0;
-	if(len>6){len=6;}
-	memset((&keyBoardHIDsub.KEYCODE1),0,6);
-	uint16_t curButton;
+	uint8_t report[8];
+	uint8_t curButton=0;
 
-
-	for(i=0;i<len;){
-		while(!(bitsOfButtons&(1<<buttonIndex))){
-			buttonIndex++;
+	i=0;
+	while(i<6){
+		while((bitsOfButtons&(1<<curButton)==0)&&(curButton<keysInPad)){
+			curButton++;
 		}
-		if(buttonIndex>=16){break;}
-		curButton=buttonToChar[buttonIndex];
-		buttonIndex++;
-		if(curButton!=0){
-			(&keyBoardHIDsub.KEYCODE1)[i]=curButton&0xff;
+		if(curButton>=keysInPad){i=6;}
+		else{
+			bitsOfButtons&= ~(1<<curButton);
+			report[i+2]=atoUID(curButton+'a');
 			i++;
 		}
-
-
 	}
 
-	USBD_HID_SendReport(&hUsbDeviceFS,&keyBoardHIDsub,sizeof(keyBoardHIDsub));
+	USBD_HID_SendReport(&hUsbDeviceFS,report,8);
 
 }
 
@@ -221,8 +273,7 @@ void debugSendStr(char * pStr){
   * @brief  The application entry point.
   * @retval int
   */
-int main(void)
-{
+int main(void){
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -252,16 +303,21 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
-  MX_SPI2_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   USBD_LL_Init(&hUsbDeviceFS);
+  logToUsbKeys(0);
+  HAL_Delay(500);
+  logToUsbKeys(1<<7);
+  HAL_Delay(100);
+
+
 
   HAL_TIM_Base_Start(&htim1);
   HAL_UART_Init(&huart1);
-//  HAL_TIM_Base_Init(&htim2);
-//  HAL_TIM_Base_Start(&htim2);
+  HAL_TIM_Base_Init(&htim2);
+  HAL_TIM_Base_Start(&htim2);
 
   uint8_t keypadState=0;
   uint32_t repeatCount=0;
@@ -273,7 +329,7 @@ int main(void)
   debugSendStr(debugMsgBuf);
   htim1.Instance->CNT=0;
   	  		HAL_TIM_Base_Start(&htim1);
-
+  	  		struct t_controlState * pControlState=initPoll();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -283,13 +339,13 @@ int main(void)
 	  if(htim1.Instance->CNT>stateChangeDelay){
 	  		htim1.Instance->CNT=0;
 	  		HAL_TIM_Base_Start(&htim1);
-	  		pollAllControlsStep();
+	  		pollAllControlsStep(pControlState);
 	  	}
 
 
-	  if(keysChangedFlag){
-		  logToUsbKeys(curKeypad);
-		  keysChangedFlag=0;
+	  if(pControlState->keysChangedFlag){
+		  logToUsbKeys(pControlState->buttons);
+		  pControlState->keysChangedFlag=0;
 	  }
 
 	  /*
@@ -438,44 +494,6 @@ static void MX_RTC_Init(void)
 }
 
 /**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI2_Init(void)
-{
-
-  /* USER CODE BEGIN SPI2_Init 0 */
-
-  /* USER CODE END SPI2_Init 0 */
-
-  /* USER CODE BEGIN SPI2_Init 1 */
-
-  /* USER CODE END SPI2_Init 1 */
-  /* SPI2 parameter configuration*/
-  hspi2.Instance = SPI2;
-  hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_1LINE;
-  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI2_Init 2 */
-
-  /* USER CODE END SPI2_Init 2 */
-
-}
-
-/**
   * @brief TIM1 Initialization Function
   * @param None
   * @retval None
@@ -542,7 +560,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 7200;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 10;
+  htim2.Init.Period = 10000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -638,21 +656,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3 
+                          |GPIO_PIN_8, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PA0 PA1 PA2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2;
+  /*Configure GPIO pins : PA0 PA1 PA2 PA3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA3 PA4 PA5 PA6 
-                           PA7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 
-                          |GPIO_PIN_7;
+  /*Configure GPIO pins : PA4 PA5 PA6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB0 PB1 */
