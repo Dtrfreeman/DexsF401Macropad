@@ -63,7 +63,10 @@ DMA_HandleTypeDef hdma_i2c1_tx;
 
 RTC_HandleTypeDef hrtc;
 
+SPI_HandleTypeDef hspi2;
+
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -81,6 +84,8 @@ static void MX_I2C1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_SPI2_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void debugInit(){
 	HAL_UART_Init(&huart1);
@@ -113,13 +118,14 @@ volatile struct macroType macroLst[4];
 
 volatile uint32_t curKeypad=0;
 volatile uint8_t keysChangedFlag=0;
+volatile uint8_t pollStage=0;
 
-void keypadReadStep(uint8_t * pollStage){
+void keypadReadStep(){
 	uint8_t curIndex=0,curReading=0;
-	curReading=(GPIOA->ODR&0xf0);
-	curReading|=(GPIOA->IDR&0x0f);
+	curReading=(GPIOA->ODR&0b111);
+	curReading|=(GPIOA->IDR&0b01111000);
 	uint8_t maskIndex=0,mask;
-	curKeypad&= ~(0xf<<(*pollStage));
+	curKeypad&= ~(0xf<<(pollStage));
 	//wipe that row (output line) to zero
 	while((curReading&0x0f)&&(maskIndex<4)){
 		mask=1<<maskIndex;
@@ -133,26 +139,30 @@ void keypadReadStep(uint8_t * pollStage){
 		}
 		maskIndex++;
 	}
-	(*pollStage)++;
+	pollStage++;
 
-	if((*pollStage)==4){
-		(*pollStage)=0;
+	if(pollStage==3){
+		pollStage=0;
 	}
-	GPIOA->ODR=((1<<((*pollStage)+4)));
+	GPIOA->ODR=((1<<((pollStage))));
 
 }
 #define stateChangeDelay 50
 
-void keypadReadRoutine(uint8_t * pollStage){
-	if(htim1.Instance->CNT>stateChangeDelay){
-		htim1.Instance->CNT=0;
-		HAL_TIM_Base_Start(&htim1);
-		keypadReadStep(pollStage);
-	}
-
-}
 
 #define keysInPad 16
+
+#define controlsStateSizeBytes 2
+struct t_controlStates{
+	uint16_t buttons:12;
+	uint8_t encoderDelta:2;
+}
+
+pollAllControlsStep(){//run every 5ms
+	keypadReadStep();
+	//full keypad cycle occurs every 20ms
+
+}
 
 void logToUsbKeys(uint32_t bitsOfButtons){
 	uint8_t len=0;
@@ -197,6 +207,7 @@ void debugSendStr(char * pStr){
 		i++;
 
 	}
+	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
 }
 
 /* USER CODE END PFP */
@@ -241,12 +252,16 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   MX_USB_DEVICE_Init();
+  MX_SPI2_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   USBD_LL_Init(&hUsbDeviceFS);
 
   HAL_TIM_Base_Start(&htim1);
   HAL_UART_Init(&huart1);
+//  HAL_TIM_Base_Init(&htim2);
+//  HAL_TIM_Base_Start(&htim2);
 
   uint8_t keypadState=0;
   uint32_t repeatCount=0;
@@ -256,21 +271,35 @@ int main(void)
   //USBD_LL_Init(&hUsbDeviceFS);
 
   debugSendStr(debugMsgBuf);
-  HAL_UART_Transmit(&huart1,debugMsgBuf,10,10);
+  htim1.Instance->CNT=0;
+  	  		HAL_TIM_Base_Start(&htim1);
+
   /* USER CODE END 2 */
-  uint8_t testReport1[8]={0,0,0,82,6,0,0,0,0};
-	uint8_t testReport2[8]={0,0,0,0,0,0,0,0,0};
-	//hUsbDeviceFS.pClass->DataOut=testReport;
-	//hUsbDeviceFS.pData=testReport;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if(htim1.Instance->CNT>stateChangeDelay){
+	  		htim1.Instance->CNT=0;
+	  		HAL_TIM_Base_Start(&htim1);
+	  		pollAllControlsStep();
+	  	}
+
+
+	  if(keysChangedFlag){
+		  logToUsbKeys(curKeypad);
+		  keysChangedFlag=0;
+	  }
+
+	  /*
+
 	  USBD_HID_SendReport(&hUsbDeviceFS,&testReport1,sizeof(testReport1));
 	  	HAL_Delay(1000);
 	  	USBD_HID_SendReport(&hUsbDeviceFS,&testReport1,sizeof(testReport1));
-	  		  	HAL_Delay(1000);
+	  		  	HAL_Delay(1000);*/
+
+
 	  	/*
 	  keypadReadRoutine(&keypadState);
 	  if(keysChangedFlag){
@@ -409,6 +438,44 @@ static void MX_RTC_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_1LINE;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief TIM1 Initialization Function
   * @param None
   * @retval None
@@ -451,6 +518,51 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 7200;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 10;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -526,19 +638,34 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_8, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PA0 PA1 PA2 PA3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
+  /*Configure GPIO pins : PA0 PA1 PA2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA3 PA4 PA5 PA6 
+                           PA7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 
+                          |GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA4 PA5 PA6 PA7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+  /*Configure GPIO pins : PB0 PB1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
