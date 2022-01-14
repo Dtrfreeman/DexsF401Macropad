@@ -23,24 +23,28 @@
 #include "usb_device.h"
 #include "keyboardBinds.h"
 #include "usbd_core.h"
+#include "usbd_conf.h"
 #include "usbd_hid.h"
+#include "usb_device.h"
+#include "usbd_def.h"
+#include "usbd_desc.h"
+#include "usbd_ctlreq.h"
+#include "usbd_ioreq.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
-typedef struct
-{
-	uint8_t MODIFIER;
-	uint8_t RESERVED;
-	uint8_t KEYCODE1;
-	uint8_t KEYCODE2;
-	uint8_t KEYCODE3;
-	uint8_t KEYCODE4;
-	uint8_t KEYCODE5;
-	uint8_t KEYCODE6;
-}subKeyBoard;
-
-subKeyBoard keyBoardHIDsub = {0,0,0,0,0,0,0,0};
+struct keyboardHID_t {
+       uint8_t id;
+       uint8_t modifiers;
+       uint8_t key1;
+       uint8_t key2;
+       uint8_t key3;
+   };
+ struct mediaHID_t {
+       uint8_t id;
+       uint8_t keys;
+     };
 
 /* USER CODE END Includes */
 
@@ -93,6 +97,18 @@ void debugInit(){
 void debugTx(){
 
 }
+
+
+void debugSendStr(char * pStr){
+	uint32_t i=0;
+	while(pStr[i]!=0){
+		ITM_SendChar(pStr[i]);
+		i++;
+
+	}
+	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
+}
+
 
 void getTime(RTC_TimeTypeDef * sTime){
 
@@ -198,7 +214,7 @@ void encoderPoll(struct t_controlState * pCtrls){
 
 
 //interval for running below function in 0.1ms increments
-#define stateChangeDelay 10
+volatile uint16_t stateChangeDelay= 20;
 
 
 void pollAllControlsStep(struct t_controlState * pCtrls){//run every 5ms
@@ -225,42 +241,45 @@ struct t_controlState * initPoll(){
 	return(pCtrl);
 }
 
-//void ctrlToKeypress(){}
-
 void logToUsbKeys(uint32_t bitsOfButtons){
+	struct keyboardHID_t keyboardHID;
+	    keyboardHID.id = 1;
+	    keyboardHID.modifiers = 0;
+	    keyboardHID.key1 = 0;
+	    keyboardHID.key2 = 0;
+	    keyboardHID.key3 = 0;
+	    if(bitsOfButtons==0){
+
+	    }
+	    else{
 	uint8_t len=0;
 	uint8_t i=0;
-	keyBoardHIDsub.MODIFIER=0;
 
-	uint8_t report[8];
+
+
 	uint8_t curButton=0;
 
 	i=0;
-	while(i<6){
+	while(i<3&&bitsOfButtons){
 		while((bitsOfButtons&(1<<curButton)==0)&&(curButton<keysInPad)){
 			curButton++;
 		}
 		if(curButton>=keysInPad){i=6;}
 		else{
-			bitsOfButtons&= ~(1<<curButton);
-			report[i+2]=atoUID(curButton+'a');
+			bitsOfButtons-= (1<<curButton);
+			(&keyboardHID.key1)[i]=curButton+4;
 			i++;
+			curButton++;
 		}
 	}
-
-	USBD_HID_SendReport(&hUsbDeviceFS,report,8);
+	    }
+USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
 
 }
 
-void debugSendStr(char * pStr){
-	uint32_t i=0;
-	while(pStr[i]!=0){
-		ITM_SendChar(pStr[i]);
-		i++;
 
-	}
-	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
-}
+void ctrlToKeypress(struct t_controlState * pCtrls){}
+
 
 /* USER CODE END PFP */
 
@@ -306,13 +325,40 @@ int main(void){
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
-  USBD_LL_Init(&hUsbDeviceFS);
-  logToUsbKeys(0);
-  HAL_Delay(500);
-  logToUsbKeys(1<<7);
-  HAL_Delay(100);
+
+  USBD_Init(&hUsbDeviceFS, &FS_Desc, DEVICE_FS);
+
+    USBD_RegisterClass(&hUsbDeviceFS, &USBD_HID);
+
+    USBD_Start(&hUsbDeviceFS);
 
 
+    struct keyboardHID_t keyboardHID;
+    keyboardHID.id = 1;
+    keyboardHID.modifiers = 0;
+    keyboardHID.key1 = 0;
+    keyboardHID.key2 = 0;
+    keyboardHID.key3 = 0;
+    // HID Media
+
+    struct mediaHID_t mediaHID;
+    mediaHID.id = 2;
+    mediaHID.keys = 0;
+
+    mediaHID.keys = 0;
+        USBD_HID_SendReport(&hUsbDeviceFS, &mediaHID, sizeof(struct mediaHID_t));
+        HAL_Delay(30);
+        mediaHID.keys = 0;
+        USBD_HID_SendReport(&hUsbDeviceFS, &mediaHID, sizeof(struct mediaHID_t));
+        HAL_Delay(30);
+
+        keyboardHID.modifiers = 0;
+        keyboardHID.key1 = 0;
+        USBD_HID_SendReport(&hUsbDeviceFS, &keyboardHID, sizeof(struct keyboardHID_t));
+        HAL_Delay(30);
+        keyboardHID.modifiers = 0;
+        keyboardHID.key1 = 0;
+        USBD_HID_SendReport(&hUsbDeviceFS, &keyboardHID, sizeof(struct keyboardHID_t));
 
   HAL_TIM_Base_Start(&htim1);
   HAL_UART_Init(&huart1);
@@ -341,7 +387,6 @@ int main(void){
 	  		HAL_TIM_Base_Start(&htim1);
 	  		pollAllControlsStep(pControlState);
 	  	}
-
 
 	  if(pControlState->keysChangedFlag){
 		  logToUsbKeys(pControlState->buttons);
