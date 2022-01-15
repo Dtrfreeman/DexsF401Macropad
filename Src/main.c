@@ -30,6 +30,8 @@
 #include "usbd_desc.h"
 #include "usbd_ctlreq.h"
 #include "usbd_ioreq.h"
+#include "stdint.h"
+#include "float.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 extern USBD_HandleTypeDef hUsbDeviceFS;
@@ -115,23 +117,6 @@ void getTime(RTC_TimeTypeDef * sTime){
 	HAL_RTC_GetTime(&hrtc,sTime,RTC_FORMAT_BIN);
 }
 
-/*	inputs are x and outputs are y
- * f5		f4		pgup	macro1
- * 	home	end		pgdown	macro2
- *			up		build/f11		macro3
- * 	left	down	right	macro4
- * */
-
-struct macroType{
-	uint8_t macroLen;
-	uint8_t * macroUsageIDlst;
-	uint8_t modifiers;
-};
-
-volatile struct macroType macroLst[4];
-
-#define keysInPad 12
-
 
 struct t_controlState{
 	uint16_t buttons:keysInPad;
@@ -176,38 +161,34 @@ volatile uint8_t encoderPeriod=0;//unused but for velocity
 //change this as the encoder cannot stay low and the velocity can be determined by how long it is low for
 
 void encoderPoll(struct t_controlState * pCtrls){
-	uint8_t prevState=pCtrls->encoderState&(encA|encB);
-	uint8_t newReading=GPIOB->IDR&(encA|encB);
-	uint8_t changed=prevState^newReading;
-	switch (prevState){
 
-		case encA:{//if a was the first to change then count the time for b to catch up, then set the new position
-			if(changed==encB){
+	uint8_t newReading=GPIOB->IDR&(encA|encB);
+
+
+		switch(newReading){
+		case encA:{
+			if(pCtrls->encoderState){
 				pCtrls->keysChangedFlag|=encoderFlag|modifiedThisCycleFlag;
-				pCtrls->encoderVal++;
-				pCtrls->encoderState=0;
-			}
-			else{
-				encoderPeriod++;
-			}
+				pCtrls->encoderVal+=1;
+				pCtrls->encoderState=0;}
 			break;
 		}
 		case encB:{
-			if(changed==encA){
+			if(pCtrls->encoderState){
 				pCtrls->keysChangedFlag|=encoderFlag|modifiedThisCycleFlag;
-				pCtrls->encoderVal--;
-				pCtrls->encoderState=0;
-			}
-			else{
-				encoderPeriod++;
-			}
+				pCtrls->encoderVal-=1;
+				pCtrls->encoderState=0;}
+			break;
+		}
+		case (encA|encB):{
+			pCtrls->encoderState=1;
 			break;
 		}
 		default:{
-			pCtrls->encoderState=changed;
-		}
-	}
 
+		}
+
+	}
 
 }
 
@@ -243,42 +224,37 @@ struct t_controlState * initPoll(){
 
 void logToUsbKeys(uint32_t bitsOfButtons){
 	struct keyboardHID_t keyboardHID;
-	    keyboardHID.id = 1;
-	    keyboardHID.modifiers = 0;
-	    keyboardHID.key1 = 0;
-	    keyboardHID.key2 = 0;
-	    keyboardHID.key3 = 0;
-	    if(bitsOfButtons==0){
+	keyboardHID.id = 1;
+	keyboardHID.modifiers = 0;
+	keyboardHID.key1 = 0;
+	keyboardHID.key2 = 0;
+	keyboardHID.key3 = 0;
+	if(bitsOfButtons==0){
 
-	    }
-	    else{
-	uint8_t len=0;
-	uint8_t i=0;
+	}
+	else{
+		uint8_t curButton=0;
+		uint8_t i=0;
 
-
-
-	uint8_t curButton=0;
-
-	i=0;
-	while(i<3&&bitsOfButtons){
-		while((bitsOfButtons&(1<<curButton)==0)&&(curButton<keysInPad)){
-			curButton++;
-		}
-		if(curButton>=keysInPad){i=6;}
-		else{
-			bitsOfButtons-= (1<<curButton);
-			(&keyboardHID.key1)[i]=curButton+4;
-			i++;
-			curButton++;
+		while((i<3)&&(bitsOfButtons!=0)&&curButton<keysInPad){
+			while(((bitsOfButtons&(1<<curButton))==0)&&(curButton<keysInPad)){
+				curButton++;
+			}
+			if(curButton<keysInPad){
+				bitsOfButtons&= ~(1<<curButton);
+				(&keyboardHID.key1)[i]=curButton+4;
+				i++;
+				curButton++;
+			}
 		}
 	}
-	    }
-USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
+	USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
 
 }
 
+void ctrlToKeypress(struct t_controlState * pCtrls){
 
-void ctrlToKeypress(struct t_controlState * pCtrls){}
+}
 
 
 /* USER CODE END PFP */
@@ -393,26 +369,7 @@ int main(void){
 		  pControlState->keysChangedFlag=0;
 	  }
 
-	  /*
 
-	  USBD_HID_SendReport(&hUsbDeviceFS,&testReport1,sizeof(testReport1));
-	  	HAL_Delay(1000);
-	  	USBD_HID_SendReport(&hUsbDeviceFS,&testReport1,sizeof(testReport1));
-	  		  	HAL_Delay(1000);*/
-
-
-	  	/*
-	  keypadReadRoutine(&keypadState);
-	  if(keysChangedFlag){
-		  logToUsbKeys(curKeypad);
-		  keysChangedFlag=0;
-	  }
-	  HAL_Delay(10);
-	  repeatCount++;
-	  if(repeatCount>100){
-		  snprintf(debugMsgBuf,64,"hell0? %lu",repeatCount);
-		  debugSendStr(debugMsgBuf);
-	  }*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

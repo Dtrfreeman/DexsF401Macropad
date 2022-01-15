@@ -22,6 +22,10 @@
 #define kBackspace 42
 #define kTab 43
 
+#define keysInPad 12
+
+
+
 enum keys{error0,error1,error2,error3,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,k1,k2,k3,k4,k5,k6,k7,k8,k9,k0,enter,esc,backspace,tab,space,minus,plus,capslock=57,f1=58,f2=59,f3=60,f4=61,f5=62,f6=63,f7=64,f8=65,pause=72,insert=73,home=74,pgup=75,delete=76,end=77,pgdown=78,right=79,left=80,down=81,up=82};
 
 uint8_t atoUID(char curChar){
@@ -43,6 +47,25 @@ uint8_t atoUID(char curChar){
 
 }
 
+struct t_macro{
+	uint8_t len;
+	uint8_t * keyLst;
+	//length len
+	float * delayLst;
+	//length len-1
+	uint8_t modifiers;
+	uint8_t repeatFlag:1;
+	uint8_t noOtherKeysFlag:1;
+	uint8_t simpleKeyFlag:1;
+};
+
+struct t_layout {
+	struct t_macro keyBinds[keysInPad];
+	char * layoutName;
+	uint8_t joystickKeys[4];
+	uint8_t dialKeys[2];
+
+};
 
 
 #endif /* KEYBOARDBINDS_H_ */
