@@ -111,13 +111,6 @@ void debugSendStr(char * pStr){
 	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
 }
 
-
-void getTime(RTC_TimeTypeDef * sTime){
-
-	HAL_RTC_GetTime(&hrtc,sTime,RTC_FORMAT_BIN);
-}
-
-
 struct t_controlState{
 	uint16_t buttons:keysInPad;
 	uint8_t pollState:2;
@@ -222,7 +215,7 @@ struct t_controlState * initPoll(){
 	return(pCtrl);
 }
 
-void logToUsbKeys(uint32_t bitsOfButtons){
+void logToUsbKeys(uint16_t bitsOfButtons){
 	struct keyboardHID_t keyboardHID;
 	keyboardHID.id = 1;
 	keyboardHID.modifiers = 0;
@@ -233,20 +226,23 @@ void logToUsbKeys(uint32_t bitsOfButtons){
 
 	}
 	else{
-		uint8_t curButton=0;
+		uint8_t curButton=keysInPad;
+		uint16_t buttonMask=1<<keysInPad;
 		uint8_t i=0;
 
-		while((i<3)&&(bitsOfButtons!=0)&&curButton<keysInPad){
-			while(((bitsOfButtons&(1<<curButton))==0)&&(curButton<keysInPad)){
-				curButton++;
-			}
-			if(curButton<keysInPad){
-				bitsOfButtons&= ~(1<<curButton);
+
+		while((i<3)&&(curButton!=0)&&bitsOfButtons){
+			buttonMask=buttonMask>>1;
+			if(buttonMask&bitsOfButtons){
 				(&keyboardHID.key1)[i]=curButton+4;
 				i++;
-				curButton++;
+				bitsOfButtons&=~buttonMask;
+
 			}
+			curButton--;
+
 		}
+
 	}
 	USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
 
