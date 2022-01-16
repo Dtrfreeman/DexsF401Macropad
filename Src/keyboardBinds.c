@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#define bufferSizePerKey 100
+#define totalLayoutBufferLen 2400
 #include "keyboardBinds.h"
-#include "main.h"
+
 
 uint32_t charToInt(char * c, uint8_t * charsRead) {
 	uint32_t total = 0;
@@ -27,18 +29,23 @@ uint32_t charToInt(char * c, uint8_t * charsRead) {
 
 }
 
-struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) {
+struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead,uint8_t maxLen) {
 	uint8_t curIndex = *pReadHead;
-	char curChar;
 
+	while ((lCode[curIndex] !='k')&&(lCode[curIndex] !='u')&&(curIndex<maxLen)) { curIndex++; }
 	uint8_t lenOfMacro = 1;
-	while ((lCode[curIndex] != ';') && (lCode[curIndex] != 0)) {
-		curIndex++;
-		if (lCode[curIndex] == ',') { lenOfMacro++; }
+	uint8_t tempIndex=curIndex+1;
+	char curChar=lCode[tempIndex];
+	while (( curChar!= ';') && (curChar != 0) && (tempIndex+1<maxLen)) {
+		if (curChar == ',') {
+			lenOfMacro++;
+		}
+		tempIndex++;
+		curChar=lCode[tempIndex];
 	}
 
-	curIndex = 0;
-	while (lCode[curIndex] == ' ') { curIndex++; }
+
+
 	//to skip over whitespace
 	struct t_macro macro = { lenOfMacro,0,0,malloc(lenOfMacro),lenOfMacro>1?malloc(lenOfMacro - 1):0,0/*mod*/,0,0,0,0,0,0};
 	uint16_t curTotalDelay=0;
@@ -56,6 +63,7 @@ struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) {
 
 		curChar = lCode[curIndex];
 		if (curChar != 'k'&&curChar != 'm') {
+			*pReadHead = curIndex;
 			return(macro);
 		}
 		if (curChar == 'm') {
@@ -67,7 +75,7 @@ struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) {
 		case 'c':
 			curIndex++;
 			curChar = lCode[curIndex];
-			macro.keyLst[curKeyPos] = 4 + ((curChar >= 'A') ? curChar - 'A' : curChar - 'a');
+			macro.keyLst[curKeyPos] = 4 + curChar - 'a';
 			curKeyPos++;
 			curIndex++;
 			break;
@@ -106,7 +114,7 @@ struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) {
 
 	} while ((curChar != ';') && (curChar != ':') && (curKeyPos < lenOfMacro));
 	macro.completedFlag = 1;
-	*pReadHead += curIndex-1;
+	*pReadHead = curIndex;
 	return(macro);
 
 }
@@ -125,20 +133,21 @@ struct t_layout * createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR
 	strcat(totalButtonStr,sKR2);
 	strcat(totalButtonStr,sKR3);
 	strcat(totalButtonStr,sKR4);
+	uint8_t maxLen=strlen(totalButtonStr);
 
 	for (uint8_t i = 0; i < keysInPad; i++) {
 		while ((totalButtonStr[readHeadInd] != 'k') && (totalButtonStr[readHeadInd] != 'm')) { readHeadInd++; }
-		layout->keyBinds[i] = layoutCodeParser(totalButtonStr + readHeadInd,&readHeadInd);
+		layout->keyBinds[i] = layoutCodeParser(totalButtonStr,&readHeadInd,maxLen);
 	}
 	readHeadInd = 0;
 	for (uint8_t i = 0; i < 4; i++) {
 		while ((joystickKeys[readHeadInd] != 'k') && (joystickKeys[readHeadInd] != 'm')) { readHeadInd++; }
-		layout->joystickKeys[i] = layoutCodeParser(joystickKeys + readHeadInd,&readHeadInd);
+		layout->joystickKeys[i] = layoutCodeParser(joystickKeys ,&readHeadInd,strlen(joystickKeys));
 	}
 	readHeadInd = 0;
 	for (uint8_t i = 0; i < 2; i++) {
 		while ((dialKeys[readHeadInd] != 'k') && (dialKeys[readHeadInd] != 'm')) { readHeadInd++; }
-		layout->dialKeys[i] = layoutCodeParser(dialKeys + readHeadInd, &readHeadInd);
+		layout->dialKeys[i] = layoutCodeParser(dialKeys , &readHeadInd,strlen(dialKeys));
 	}
 
 
@@ -192,24 +201,24 @@ void inputmode2Str(struct t_macro pMacArry[],uint8_t sizeOfMacroLst,char * cOut,
 void layout2str(struct t_layout * pLayout) {
 	uint16_t curLen = 0;
 
-	char output[maxLen];
-	char buf[bufferSizePerKey];
-	snprintf(output, maxLen,"Name: %s\r\nBindings: ", pLayout->layoutName);
+	char output[totalLayoutBufferLen];
+
+	snprintf(output, totalLayoutBufferLen,"Name: %s\r\nBindings: ", pLayout->layoutName);
 	curLen = strlen(output);
-	snprintf(output+ curLen, maxLen -curLen, "	Keypad:\r\n ");
+	snprintf(output+ curLen, totalLayoutBufferLen -curLen, "	Keypad:\r\n ");
 
-	inputmode2Str(pLayout->keyBinds, keysInPad, output, maxLen);
-
-	curLen = strlen(output);
-	snprintf(output + curLen, maxLen - curLen, " Joystick:\r\n ");
-
-	inputmode2Str(pLayout->joystickKeys, 4, output, maxLen);
-
+	inputmode2Str(pLayout->keyBinds, keysInPad, output, totalLayoutBufferLen);
 
 	curLen = strlen(output);
-	snprintf(output + curLen, maxLen - curLen, "Wheel:\r\n");
+	snprintf(output + curLen, totalLayoutBufferLen - curLen, " Joystick:\r\n ");
 
-	inputmode2Str(pLayout->dialKeys, 2, output, maxLen);
+	inputmode2Str(pLayout->joystickKeys, 4, output, totalLayoutBufferLen);
+
+
+	curLen = strlen(output);
+	snprintf(output + curLen, totalLayoutBufferLen - curLen, "Wheel:\r\n");
+
+	inputmode2Str(pLayout->dialKeys, 2, output, totalLayoutBufferLen);
 	//output = dynamicConcat(output, &maxLen,
 		//inputmode2Str(pLayout->dialKeys, 2));
 	puts(output);

@@ -50,8 +50,7 @@ uint8_t atoUID(char curChar){
 
 #define keysInPad 12
 
-#define bufferSizePerKey 100
-const uint16_t maxLen=2400;
+
 struct t_macro {
 	uint8_t len : 4;
 	uint8_t index : 4;
@@ -80,7 +79,7 @@ struct t_layout {
 uint32_t charToInt(char * c, uint8_t * charsRead);
 
 
-struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) ;
+struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead,uint8_t maxLen) ;
 
 struct t_layout * createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR4, char * playoutName, char * joystickKeys, char * dialKeys);
 

@@ -109,7 +109,7 @@ void debugSendStr(char * pStr){
 		i++;
 
 	}
-	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
+
 }
 
 void debugSendMacro(struct t_macro * mac){
@@ -138,7 +138,7 @@ void keypadReadStep(struct t_controlState * pCtrls){
 
 	uint8_t columns=(GPIOA->IDR&0b01110000)>>4;
 	uint8_t row=pCtrls->pollState * 3;
-	uint8_t maskIndex=0,mask;
+
 	uint16_t prevButtons=pCtrls->buttons;
 	pCtrls->buttons&= ~(0b111<<row);//mask out those bits that could be set
 	pCtrls->buttons|=columns<<row;//or in the new reading
@@ -222,7 +222,7 @@ struct t_controlState * initPoll(){
 	return(pCtrl);
 }
 
-
+/*
 void logToUsbKeys(uint16_t bitsOfButtons){
 	struct keyboardHID_t keyboardHID;
 	keyboardHID.id = 1;
@@ -256,6 +256,7 @@ void logToUsbKeys(uint16_t bitsOfButtons){
 	USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
 
 }
+*/
 #define maxOutputIndex 5
 void ctrlDesignator(struct t_controlState * pCtrls,struct t_layout * pLayout){
 	uint8_t keyboardOutputBytes[5]={1,0,0,0,0};
@@ -271,7 +272,7 @@ void ctrlDesignator(struct t_controlState * pCtrls,struct t_layout * pLayout){
 
 
 	if(buttons!=0){
-		for(uint8_t i=0;i<keysInPad;i++){
+
 			uint8_t curButton=keysInPad;
 			uint16_t buttonMask=1<<keysInPad;
 
@@ -284,24 +285,26 @@ void ctrlDesignator(struct t_controlState * pCtrls,struct t_layout * pLayout){
 						mac->currentlyRunning=1;
 						mac->index=0;
 						keyboardOutputBytes[curOutputIndex]=mac->keyLst[0];
-						debugSendMacro(mac);
+						//debugSendMacro(mac);
 						curOutputIndex++;
 					}
 					buttons&= ~buttonMask;
 				}
-				else if((mac->simpleKeyFlag)||(mac->index==mac->len)){
+				else if((mac->simpleKeyFlag)||(mac->index>mac->len)){
 					mac->currentlyRunning=0;
 				}
 				curButton--;
 			}
-		}
+
 	}
 
-	for(uint8_t i=0;i<keysInPad+4+2;i++){
+	for(uint8_t i=0;i<keysInPad;i++){
 			if(pLayout->keyBinds[i].currentlyRunning){
+				mac=&(pLayout->keyBinds[i]);
 				mac->ticksRunning++;
 				mac= &(pLayout->keyBinds[i]);
-				if((!(mac->simpleKeyFlag)&&(mac->len!=1))?((mac->delayLst[mac->index]>mac->ticksRunning)
+				if((!(mac->simpleKeyFlag)&&(mac->len!=1))
+						?(((mac->delayLst[mac->index]+1)>(mac->ticksRunning))
 						&&(curOutputIndex<maxOutputIndex)):0){
 					//if the delay has passed and theres space to send it in this packet
 					mac->index++;
@@ -388,39 +391,32 @@ int main(void){
     mediaHID.keys = 0;
     HAL_Delay(100);
     mediaHID.keys = 0xe9;
-        USBD_HID_SendReport(&hUsbDeviceFS, &mediaHID, sizeof(struct mediaHID_t));
+        USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&mediaHID, sizeof(struct mediaHID_t));
         HAL_Delay(30);
         mediaHID.keys = 0;
-        USBD_HID_SendReport(&hUsbDeviceFS, &mediaHID, sizeof(struct mediaHID_t));
+        USBD_HID_SendReport(&hUsbDeviceFS,(uint8_t *) &mediaHID, sizeof(struct mediaHID_t));
         HAL_Delay(30);
 
         keyboardHID.modifiers = 0;
         keyboardHID.key1 = 0;
-        USBD_HID_SendReport(&hUsbDeviceFS, &keyboardHID, sizeof(struct keyboardHID_t));
+        USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardHID, sizeof(struct keyboardHID_t));
         HAL_Delay(30);
         keyboardHID.modifiers = 0;
         keyboardHID.key1 = 0;
-        USBD_HID_SendReport(&hUsbDeviceFS, &keyboardHID, sizeof(struct keyboardHID_t));
+        USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardHID, sizeof(struct keyboardHID_t));
 
   HAL_TIM_Base_Start(&htim1);
   HAL_UART_Init(&huart1);
   HAL_TIM_Base_Init(&htim2);
   HAL_TIM_Base_Start(&htim2);
 
-  uint8_t keypadState=0;
-  uint32_t repeatCount=0;
-  char debugMsgBuf[64];
-  memset(debugMsgBuf,0,64);
-  snprintf(debugMsgBuf,64,"booted up");
-  //USBD_LL_Init(&hUsbDeviceFS);
 
-  debugSendStr(debugMsgBuf);
   htim1.Instance->CNT=0;
   	  		HAL_TIM_Base_Start(&htim1);
   	  		struct t_controlState * pControlState=initPoll();
   	  		struct t_layout * testLayout=createLayout(
   	  			"ku128;ku82;ku129;",//vol up, arrow up,vol down
-  	  			"ku74;kuH.5,kci;ku77",//home, Press H, wait 5, press i, end
+  	  			"ku74;kch.5,kci;ku77;",//home, Press H, wait 5, press i, end
   	  			"ku76;ku68;ku56;",//delete, f11, /
   	  			"ku55;ku40;ku116;",//backslash, enter, execute
   	  			"Test layout",

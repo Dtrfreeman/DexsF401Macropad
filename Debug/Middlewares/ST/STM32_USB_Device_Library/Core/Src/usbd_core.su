@@ -8,7 +8,7 @@ usbd_core.c:224:20:USBD_SetClassConfig	8	static
 usbd_core.c:247:20:USBD_ClrClassConfig	8	static
 usbd_core.c:261:20:USBD_LL_SetupStage	16	static
 usbd_core.c:298:20:USBD_LL_DataOutStage	16	static
-usbd_core.c:360:20:USBD_LL_DataInStage	16	static
+usbd_core.c:360:20:USBD_LL_DataInStage	8	static
 usbd_core.c:440:20:USBD_LL_Reset	16	static
 usbd_core.c:473:20:USBD_LL_SetSpeed	0	static
 usbd_core.c:486:20:USBD_LL_Suspend	0	static

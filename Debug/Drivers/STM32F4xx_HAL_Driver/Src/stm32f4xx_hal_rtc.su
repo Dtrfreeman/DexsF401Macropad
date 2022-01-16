@@ -11,9 +11,9 @@ stm32f4xx_hal_rtc.c:246:19:HAL_RTC_Init	16	static
 stm32f4xx_hal_rtc.c:363:19:HAL_RTC_DeInit	16	static
 stm32f4xx_hal_rtc.c:1804:9:RTC_ByteToBcd2	0	static
 stm32f4xx_hal_rtc.c:725:19:HAL_RTC_SetTime	24	static
-stm32f4xx_hal_rtc.c:901:19:HAL_RTC_SetDate	24	static
-stm32f4xx_hal_rtc.c:1066:19:HAL_RTC_SetAlarm	32	static
-stm32f4xx_hal_rtc.c:1249:19:HAL_RTC_SetAlarm_IT	40	static
+stm32f4xx_hal_rtc.c:901:19:HAL_RTC_SetDate	16	static
+stm32f4xx_hal_rtc.c:1066:19:HAL_RTC_SetAlarm	24	static
+stm32f4xx_hal_rtc.c:1249:19:HAL_RTC_SetAlarm_IT	32	static
 stm32f4xx_hal_rtc.c:1822:9:RTC_Bcd2ToByte	0	static
 stm32f4xx_hal_rtc.c:856:19:HAL_RTC_GetTime	16	static
 stm32f4xx_hal_rtc.c:1011:19:HAL_RTC_GetDate	16	static
