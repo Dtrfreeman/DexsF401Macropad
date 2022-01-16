@@ -26,8 +26,8 @@
 
 #define usbKeySize 3
 
-enum keys{error0,error1,error2,error3,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,k1,k2,k3,k4,k5,k6,k7,k8,k9,k0,enter,esc,backspace,tab,space,minus,plus,capslock=57,f1=58,f2=59,f3=60,f4=61,f5=62,f6=63,f7=64,f8=65,pause=72,insert=73,home=74,pgup=75,delete=76,end=77,pgdown=78,right=79,left=80,down=81,up=82};
-
+//enum keys{error0,error1,error2,error3,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z,k1,k2,k3,k4,k5,k6,k7,k8,k9,k0,enter,esc,backspace,tab,space,minus,plus,capslock=57,f1=58,f2=59,f3=60,f4=61,f5=62,f6=63,f7=64,f8=65,pause=72,insert=73,home=74,pgup=75,delete=76,end=77,pgdown=78,right=79,left=80,down=81,up=82};
+/*
 uint8_t atoUID(char curChar){
 
 	if((curChar>='A')&&(curChar<='Z')){
@@ -45,10 +45,13 @@ uint8_t atoUID(char curChar){
 
 	return(0);
 
-}
+}*/
 
 
 #define keysInPad 12
+
+#define bufferSizePerKey 100
+const uint16_t maxLen=2400;
 struct t_macro {
 	uint8_t len : 4;
 	uint8_t index : 4;
@@ -74,5 +77,16 @@ struct t_layout {
 
 };
 
+uint32_t charToInt(char * c, uint8_t * charsRead);
 
+
+struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) ;
+
+struct t_layout * createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR4, char * playoutName, char * joystickKeys, char * dialKeys);
+
+void macro2str(struct t_macro * macro,char * strOutLoc,uint16_t maxLen);
+
+void inputmode2Str(struct t_macro pMacArry[],uint8_t sizeOfMacroLst,char * cOut,uint16_t maxLen);
+
+void layout2str(struct t_layout * pLayout);
 #endif /* KEYBOARDBINDS_H_ */

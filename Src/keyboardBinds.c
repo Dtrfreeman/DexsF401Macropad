@@ -111,34 +111,34 @@ struct t_macro layoutCodeParser(char * lCode,uint8_t * pReadHead) {
 
 }
 
-struct t_layout createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR4, char * playoutName, char * joystickKeys, char * dialKeys) {
+struct t_layout * createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR4, char * playoutName, char * joystickKeys, char * dialKeys) {
 
-	struct t_layout layout;
+	struct t_layout  * layout=malloc(sizeof(struct t_layout));
 	//layout.layoutName =malloc(strlen(playoutName));
 	//memcpy(layout.layoutName,playoutName, strlen(playoutName)+1);
-	strcpy_s(layout.layoutName, 20, playoutName);
+	strcpy(layout->layoutName, playoutName);
 	uint8_t readHeadInd = 0;
 	uint8_t neededStrLength = strlen(sKR1) + strlen(sKR2) + strlen(sKR3) + strlen(sKR4) + 5;
 	char * totalButtonStr = malloc(neededStrLength);
-	memset(totalButtonStr, 0, neededStrLength);
-	strcat_s(totalButtonStr, neededStrLength,sKR1);
-	strcat_s(totalButtonStr, neededStrLength,sKR2);
-	strcat_s(totalButtonStr, neededStrLength,sKR3);
-	strcat_s(totalButtonStr, neededStrLength,sKR4);
+	memset(totalButtonStr,0, neededStrLength);
+	strcat(totalButtonStr,sKR1);
+	strcat(totalButtonStr,sKR2);
+	strcat(totalButtonStr,sKR3);
+	strcat(totalButtonStr,sKR4);
 
 	for (uint8_t i = 0; i < keysInPad; i++) {
 		while ((totalButtonStr[readHeadInd] != 'k') && (totalButtonStr[readHeadInd] != 'm')) { readHeadInd++; }
-		layout.keyBinds[i] = layoutCodeParser(totalButtonStr + readHeadInd,&readHeadInd);
+		layout->keyBinds[i] = layoutCodeParser(totalButtonStr + readHeadInd,&readHeadInd);
 	}
 	readHeadInd = 0;
 	for (uint8_t i = 0; i < 4; i++) {
 		while ((joystickKeys[readHeadInd] != 'k') && (joystickKeys[readHeadInd] != 'm')) { readHeadInd++; }
-		layout.joystickKeys[i] = layoutCodeParser(joystickKeys + readHeadInd,&readHeadInd);
+		layout->joystickKeys[i] = layoutCodeParser(joystickKeys + readHeadInd,&readHeadInd);
 	}
 	readHeadInd = 0;
 	for (uint8_t i = 0; i < 2; i++) {
 		while ((dialKeys[readHeadInd] != 'k') && (dialKeys[readHeadInd] != 'm')) { readHeadInd++; }
-		layout.dialKeys[i] = layoutCodeParser(dialKeys + readHeadInd, &readHeadInd);
+		layout->dialKeys[i] = layoutCodeParser(dialKeys + readHeadInd, &readHeadInd);
 	}
 
 
@@ -151,17 +151,17 @@ struct t_layout createLayout(char * sKR1, char * sKR2, char * sKR3, char * sKR4,
 //https://www.win.tue.nl/~aeb/linux/kbd/scancodes-14.html
 
 
-#define bufferSizePerKey 100
+
 void macro2str(struct t_macro * macro,char * strOutLoc,uint16_t maxLen) {
 	char str [bufferSizePerKey];
 
 	snprintf(str, bufferSizePerKey, "	len:%u index:%u mod:%u flags:r%u ,n%u ,s%u ,m%u\r\n", macro->len, macro->index, macro->modifiers, macro->repeatFlag, macro->noOtherKeysFlag, macro->simpleKeyFlag, macro->forMediaFlag);
-	strcat_s(strOutLoc, maxLen, str);
+	strcat(strOutLoc, str);
 	memset(str, 0, bufferSizePerKey);
 
 	for (uint8_t i = 0; i < macro->len; i++) {
 		snprintf(str, bufferSizePerKey, "		Key:%u, Delay:%lu   ", macro->keyLst[i], (i > 0) ? (uint32_t)macro->delayLst[i - 1] : 0);
-		strcat_s(strOutLoc, maxLen, str);
+		strcat(strOutLoc, str);
 		memset(str, 0, bufferSizePerKey);
 	}
 
@@ -170,34 +170,27 @@ void macro2str(struct t_macro * macro,char * strOutLoc,uint16_t maxLen) {
 }
 
 void inputmode2Str(struct t_macro pMacArry[],uint8_t sizeOfMacroLst,char * cOut,uint16_t maxLen) {
-	uint16_t curWriteHead = 0;
-	uint16_t curLen = 0;
-	uint16_t bufLen = 0;
+
 
 	char buf[bufferSizePerKey];
 
 	for (uint8_t i = 0; i < sizeOfMacroLst; i++) {
 		snprintf(buf, bufferSizePerKey*10, "key:%u\r\n", i);
-		strcat_s(cOut, maxLen, buf);
+		strcat(cOut, buf);
 		memset(buf, 0, bufferSizePerKey);
 		macro2str(&pMacArry[i], cOut,maxLen);
 		snprintf(buf, bufferSizePerKey*10, "key %u over\r\n", i);
-		strcat_s(cOut, maxLen, buf);
+		strcat(cOut, buf);
 		memset(buf, 0, bufferSizePerKey);
 	}
 
 
 }
 
-#define maxLen (bufferSizePerKey*24)
+
 
 void layout2str(struct t_layout * pLayout) {
-
-	uint16_t curWriteHead = 0;
 	uint16_t curLen = 0;
-
-	uint16_t bufLen = 0;
-
 
 	char output[maxLen];
 	char buf[bufferSizePerKey];

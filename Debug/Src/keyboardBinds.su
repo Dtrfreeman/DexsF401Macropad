@@ -1,7 +1,6 @@
-keyboardBinds.h:31:9:atoUID	0	static
 keyboardBinds.c:8:10:charToInt	20	static
 keyboardBinds.c:30:16:layoutCodeParser	72	static
-keyboardBinds.c:114:17:createLayout	368	static
-keyboardBinds.c:155:6:macro2str	160	static
+keyboardBinds.c:114:19:createLayout	72	static
+keyboardBinds.c:155:6:macro2str	152	static
 keyboardBinds.c:172:6:inputmode2Str	136	static
-keyboardBinds.c:194:6:layout2str	2408	static
+keyboardBinds.c:192:6:layout2str	2416	dynamic,bounded

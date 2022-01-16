@@ -112,6 +112,12 @@ void debugSendStr(char * pStr){
 	HAL_UART_Transmit(&huart1,pStr,strlen(pStr),10);
 }
 
+void debugSendMacro(struct t_macro * mac){
+	char buf[64];
+	macro2str(mac,buf,64);
+	debugSendStr(buf);
+}
+
 struct t_controlState{
 	uint16_t buttons:keysInPad;
 	uint8_t pollState:2;
@@ -271,15 +277,20 @@ void ctrlDesignator(struct t_controlState * pCtrls,struct t_layout * pLayout){
 
 			while((curOutputIndex<maxOutputIndex)&&(curButton!=0)&&buttons){
 				buttonMask=buttonMask>>1;
+				mac=&(pLayout->keyBinds[curButton]);
 				if(buttonMask&buttons){
-					mac=&(pLayout->keyBinds[curButton]);
+
 					if((!mac->currentlyRunning)||mac->simpleKeyFlag){
 						mac->currentlyRunning=1;
 						mac->index=0;
 						keyboardOutputBytes[curOutputIndex]=mac->keyLst[0];
+						debugSendMacro(mac);
 						curOutputIndex++;
 					}
 					buttons&= ~buttonMask;
+				}
+				else if((mac->simpleKeyFlag)||(mac->index==mac->len)){
+					mac->currentlyRunning=0;
 				}
 				curButton--;
 			}
@@ -407,7 +418,7 @@ int main(void){
   htim1.Instance->CNT=0;
   	  		HAL_TIM_Base_Start(&htim1);
   	  		struct t_controlState * pControlState=initPoll();
-  	  		struct t_layout testLayout=createLayout(
+  	  		struct t_layout * testLayout=createLayout(
   	  			"ku128;ku82;ku129;",//vol up, arrow up,vol down
   	  			"ku74;kuH.5,kci;ku77",//home, Press H, wait 5, press i, end
   	  			"ku76;ku68;ku56;",//delete, f11, /
@@ -429,7 +440,7 @@ int main(void){
 	  	}
 
 	  if(pControlState->keysChangedFlag){
-		  ctrlDesignator(pControlState,&testLayout);
+		  ctrlDesignator(pControlState,testLayout);
 		  pControlState->keysChangedFlag=0;
 	  }
 
