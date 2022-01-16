@@ -32,6 +32,7 @@
 #include "usbd_ioreq.h"
 #include "stdint.h"
 #include "float.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 extern USBD_HandleTypeDef hUsbDeviceFS;
@@ -215,6 +216,7 @@ struct t_controlState * initPoll(){
 	return(pCtrl);
 }
 
+
 void logToUsbKeys(uint16_t bitsOfButtons){
 	struct keyboardHID_t keyboardHID;
 	keyboardHID.id = 1;
@@ -222,6 +224,7 @@ void logToUsbKeys(uint16_t bitsOfButtons){
 	keyboardHID.key1 = 0;
 	keyboardHID.key2 = 0;
 	keyboardHID.key3 = 0;
+
 	if(bitsOfButtons==0){
 
 	}
@@ -231,7 +234,7 @@ void logToUsbKeys(uint16_t bitsOfButtons){
 		uint8_t i=0;
 
 
-		while((i<3)&&(curButton!=0)&&bitsOfButtons){
+		while((i<usbKeySize)&&(curButton!=0)&&bitsOfButtons){
 			buttonMask=buttonMask>>1;
 			if(buttonMask&bitsOfButtons){
 				(&keyboardHID.key1)[i]=curButton+4;
@@ -247,8 +250,64 @@ void logToUsbKeys(uint16_t bitsOfButtons){
 	USBD_HID_SendReport(&hUsbDeviceFS,&keyboardHID,sizeof(struct keyboardHID_t));
 
 }
+#define maxOutputIndex 5
+void ctrlDesignator(struct t_controlState * pCtrls,struct t_layout * pLayout){
+	uint8_t keyboardOutputBytes[5]={1,0,0,0,0};
 
-void ctrlToKeypress(struct t_controlState * pCtrls){
+	uint8_t curOutputIndex=2;
+
+
+	struct t_macro * mac;
+	//check what macros are already running
+
+
+	uint16_t buttons=pCtrls->buttons;
+
+
+	if(buttons!=0){
+		for(uint8_t i=0;i<keysInPad;i++){
+			uint8_t curButton=keysInPad;
+			uint16_t buttonMask=1<<keysInPad;
+
+			while((curOutputIndex<maxOutputIndex)&&(curButton!=0)&&buttons){
+				buttonMask=buttonMask>>1;
+				if(buttonMask&buttons){
+					mac=&(pLayout->keyBinds[curButton]);
+					if((!mac->currentlyRunning)||mac->simpleKeyFlag){
+						mac->currentlyRunning=1;
+						mac->index=0;
+						keyboardOutputBytes[curOutputIndex]=mac->keyLst[0];
+						curOutputIndex++;
+					}
+					buttons&= ~buttonMask;
+				}
+				curButton--;
+			}
+		}
+	}
+
+	for(uint8_t i=0;i<keysInPad+4+2;i++){
+			if(pLayout->keyBinds[i].currentlyRunning){
+				mac->ticksRunning++;
+				mac= &(pLayout->keyBinds[i]);
+				if((!(mac->simpleKeyFlag)&&(mac->len!=1))?((mac->delayLst[mac->index]>mac->ticksRunning)
+						&&(curOutputIndex<maxOutputIndex)):0){
+					//if the delay has passed and theres space to send it in this packet
+					mac->index++;
+					keyboardOutputBytes[curOutputIndex]=mac->keyLst[mac->index];
+
+					curOutputIndex++;
+
+				}
+				else{
+
+				}
+
+			}
+		}
+
+	USBD_HID_SendReport(&hUsbDeviceFS,keyboardOutputBytes,maxOutputIndex);
+
 
 }
 
@@ -316,8 +375,8 @@ int main(void){
     struct mediaHID_t mediaHID;
     mediaHID.id = 2;
     mediaHID.keys = 0;
-
-    mediaHID.keys = 0;
+    HAL_Delay(100);
+    mediaHID.keys = 0xe9;
         USBD_HID_SendReport(&hUsbDeviceFS, &mediaHID, sizeof(struct mediaHID_t));
         HAL_Delay(30);
         mediaHID.keys = 0;
@@ -348,6 +407,15 @@ int main(void){
   htim1.Instance->CNT=0;
   	  		HAL_TIM_Base_Start(&htim1);
   	  		struct t_controlState * pControlState=initPoll();
+  	  		struct t_layout testLayout=createLayout(
+  	  			"ku128;ku82;ku129;",//vol up, arrow up,vol down
+  	  			"ku74;kuH.5,kci;ku77",//home, Press H, wait 5, press i, end
+  	  			"ku76;ku68;ku56;",//delete, f11, /
+  	  			"ku55;ku40;ku116;",//backslash, enter, execute
+  	  			"Test layout",
+  	  			"ku79;ku80;ku81;ku82;",
+  	  			"ku128;ku129;"
+  	  		);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -361,7 +429,7 @@ int main(void){
 	  	}
 
 	  if(pControlState->keysChangedFlag){
-		  logToUsbKeys(pControlState->buttons);
+		  ctrlDesignator(pControlState,&testLayout);
 		  pControlState->keysChangedFlag=0;
 	  }
 
